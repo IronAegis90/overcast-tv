@@ -1,0 +1,34 @@
+{
+  "name": "overcast-tv",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Home Assistant notifications as toasts on Vega OS Fire TVs",
+  "license": "Apache-2.0",
+  "repository": "github:IronAegis90/overcast-tv",
+  "scripts": {
+    "start": "react-native start",
+    "build": "react-native build-vega",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --no-warnings --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@amazon-devices/headless-task-manager": "^1.2.9",
+    "@amazon-devices/react-native-async-storage__async-storage": "^2.1.9000000002",
+    "@amazon-devices/react-native-kepler": "^4.0.2",
+    "react": "19.2.0",
+    "react-native": "0.83.0"
+  },
+  "devDependencies": {
+    "@amazon-devices/kepler-cli-platform": "^0.22.14",
+    "@amazon-devices/keplerscript-commonmodules": "^1.1.1",
+    "@react-native-community/cli": "^20.0.0",
+    "@react-native/babel-preset": "0.83.0",
+    "@react-native/metro-config": "0.83.0",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.2.0",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

@@ -1,0 +1,124 @@
+/**
+ * The headless service's work: watch the saved config, keep one
+ * OvercastClient connected for it, show incoming notifications as toasts and
+ * report status back to the UI.
+ */
+
+import {
+  isComplete,
+  loadConfig,
+  saveStatus,
+  type OvercastConfig,
+  type ServiceStatus,
+  type Storage,
+} from '../config.ts';
+import {OvercastClient, type ClientOptions, type DeliveryResult} from '../haClient.ts';
+import {APP_VERSION} from '../ids.ts';
+import type {NotificationEvent} from '../protocol.ts';
+
+export const CONFIG_POLL_MS = 5_000;
+
+export interface RunnerDeps {
+  storage: Storage;
+  post(event: NotificationEvent): Promise<void>;
+  /** Overrides for tests. */
+  clientOptions?: Partial<ClientOptions>;
+  setInterval?(fn: () => void, ms: number): unknown;
+  clearInterval?(handle: unknown): void;
+  log?(msg: string): void;
+}
+
+export class ServiceRunner {
+  private readonly deps: RunnerDeps;
+  private client: OvercastClient | null = null;
+  private revision = -1;
+  private poller: unknown = null;
+  private status: ServiceStatus = {state: 'starting', at: Date.now()};
+
+  constructor(deps: RunnerDeps) {
+    this.deps = deps;
+  }
+
+  /** Returns at once; the system ends a service whose start does not return. */
+  start(): void {
+    if (this.poller !== null) {
+      return;
+    }
+    const setInt = this.deps.setInterval ?? ((fn, ms) => setInterval(fn, ms));
+    this.poller = setInt(() => void this.checkConfig(), CONFIG_POLL_MS);
+    void this.checkConfig();
+  }
+
+  stop(): void {
+    if (this.poller !== null) {
+      (this.deps.clearInterval ?? (h => clearInterval(h as ReturnType<typeof setInterval>)))(
+        this.poller,
+      );
+      this.poller = null;
+    }
+    this.client?.stop();
+    this.client = null;
+  }
+
+  /** Reconnects when the UI saved new settings. */
+  async checkConfig(): Promise<void> {
+    let config: OvercastConfig | null;
+    try {
+      config = await loadConfig(this.deps.storage);
+    } catch (err) {
+      this.deps.log?.(`overcast: reading config failed: ${String(err)}`);
+      return;
+    }
+    const revision = config?.revision ?? 0;
+    if (revision === this.revision) {
+      return;
+    }
+    this.revision = revision;
+    this.client?.stop();
+    this.client = null;
+    if (!isComplete(config)) {
+      await this.report({state: 'unconfigured', at: Date.now()});
+      return;
+    }
+    this.client = new OvercastClient({
+      url: config.url,
+      token: config.token,
+      registration: {
+        device_id: config.deviceId,
+        name: config.name,
+        app_version: APP_VERSION,
+        capabilities: {launch: true, icon_size: true},
+      },
+      onNotification: event => this.deliver(event),
+      onStatus: s => void this.report({...this.status, state: s.state, detail: s.detail, at: Date.now()}),
+      ...this.deps.clientOptions,
+    });
+    this.client.start();
+  }
+
+  private async deliver(event: NotificationEvent): Promise<DeliveryResult> {
+    let result: DeliveryResult;
+    try {
+      await this.deps.post(event);
+      result = {status: 'posted'};
+    } catch (err) {
+      result = {status: 'failed', error: String(err)};
+    }
+    await this.report({
+      ...this.status,
+      at: Date.now(),
+      lastNotification: {title: event.title, at: Date.now(), status: result.status},
+    });
+    return result;
+  }
+
+  private async report(status: ServiceStatus): Promise<void> {
+    this.status = status;
+    this.deps.log?.(`overcast: ${status.state}${status.detail ? ` (${status.detail})` : ''}`);
+    try {
+      await saveStatus(this.deps.storage, status);
+    } catch (err) {
+      this.deps.log?.(`overcast: writing status failed: ${String(err)}`);
+    }
+  }
+}
