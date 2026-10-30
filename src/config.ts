@@ -21,10 +21,16 @@ export interface OvercastConfig {
 export interface ServiceStatus {
   state: string;
   detail?: string;
-  /** Epoch ms. */
+  /** Epoch ms of the service's latest write (a heartbeat, not the state change). */
   at: number;
   lastNotification?: {title: string; at: number; status: string};
 }
+
+/**
+ * The service rewrites its status at least every 5 s; the UI treats an older
+ * status as "service not running".
+ */
+export const STATUS_STALE_MS = 15_000;
 
 const CONFIG_KEY = 'overcast.config';
 const STATUS_KEY = 'overcast.status';

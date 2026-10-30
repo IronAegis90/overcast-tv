@@ -85,3 +85,74 @@ test('connects with saved settings, posts toasts and reconnects on change', asyn
   assert.equal(sockets.length, 2);
   runner.stop();
 });
+
+/** Storage whose reads only resolve when the test says so. */
+class SlowStorage extends MemoryStorage {
+  pending: Array<() => void> = [];
+  reads = 0;
+  async getItem(key: string): Promise<string | null> {
+    this.reads++;
+    await new Promise<void>(resolve => this.pending.push(resolve));
+    return super.getItem(key);
+  }
+  release(): void {
+    this.pending.splice(0).forEach(resolve => resolve());
+  }
+}
+
+function setupWith(storage: MemoryStorage) {
+  const sockets: FakeSocket[] = [];
+  const runner = new ServiceRunner({
+    storage,
+    post: async () => {},
+    clientOptions: {
+      socketFactory: url => {
+        const s = new FakeSocket(url);
+        sockets.push(s);
+        return s;
+      },
+      timers: new FakeTimers(),
+    },
+    setInterval: () => 1,
+    clearInterval: () => {},
+  });
+  return {sockets, runner};
+}
+
+test('a config read still pending at stop() starts no client', async () => {
+  const storage = new SlowStorage();
+  await MemoryStorage.prototype.setItem.call(
+    storage,
+    'overcast.config',
+    JSON.stringify({url: 'https://ha', token: 't', name: 'TV', deviceId: 'd', revision: 1}),
+  );
+  const {sockets, runner} = setupWith(storage);
+  runner.start();
+  runner.stop();
+  storage.release();
+  await tick();
+  assert.equal(sockets.length, 0);
+});
+
+test('config checks do not overlap', async () => {
+  const storage = new SlowStorage();
+  const {runner} = setupWith(storage);
+  runner.start();
+  await runner.checkConfig(); // poll while the first read is pending: skipped
+  assert.equal(storage.reads, 1);
+  storage.release();
+  await tick();
+  runner.stop();
+});
+
+test('status timestamp is refreshed on every poll', async () => {
+  const {storage, runner} = setup();
+  await saveConfig(storage, {url: 'https://ha.example.com', token: 'T', name: 'TV'});
+  runner.start();
+  await tick();
+  const first = (await loadStatus(storage))!.at;
+  await new Promise(resolve => setTimeout(resolve, 5));
+  await runner.checkConfig();
+  assert.ok((await loadStatus(storage))!.at > first);
+  runner.stop();
+});

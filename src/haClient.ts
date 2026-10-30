@@ -218,6 +218,13 @@ export class OvercastClient {
       return;
     }
     const code: string | undefined = msg.error?.code;
+    if (code === 'unauthorized') {
+      // This TV is registered to another HA user; retrying cannot succeed.
+      this.stopped = true;
+      this.closeSocket();
+      this.setStatus({state: 'auth_failed', detail: msg.error.message});
+      return;
+    }
     if (code === 'unsupported_protocol' || code === 'unknown_command') {
       // HA without the integration answers unknown_command.
       this.stopped = true;

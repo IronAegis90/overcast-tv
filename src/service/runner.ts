@@ -16,6 +16,7 @@ import {OvercastClient, type ClientOptions, type DeliveryResult} from '../haClie
 import {APP_VERSION} from '../ids.ts';
 import type {NotificationEvent} from '../protocol.ts';
 
+/** Also the status heartbeat: keep it well under STATUS_STALE_MS. */
 export const CONFIG_POLL_MS = 5_000;
 
 export interface RunnerDeps {
@@ -33,6 +34,8 @@ export class ServiceRunner {
   private client: OvercastClient | null = null;
   private revision = -1;
   private poller: unknown = null;
+  private checking = false;
+  private stopped = true;
   private status: ServiceStatus = {state: 'starting', at: Date.now()};
 
   constructor(deps: RunnerDeps) {
@@ -44,12 +47,14 @@ export class ServiceRunner {
     if (this.poller !== null) {
       return;
     }
+    this.stopped = false;
     const setInt = this.deps.setInterval ?? ((fn, ms) => setInterval(fn, ms));
     this.poller = setInt(() => void this.checkConfig(), CONFIG_POLL_MS);
     void this.checkConfig();
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.poller !== null) {
       (this.deps.clearInterval ?? (h => clearInterval(h as ReturnType<typeof setInterval>)))(
         this.poller,
@@ -60,8 +65,24 @@ export class ServiceRunner {
     this.client = null;
   }
 
-  /** Reconnects when the UI saved new settings. */
+  /**
+   * Reconnects when the UI saved new settings, and refreshes the status
+   * timestamp so the UI can tell the service is alive. Checks never overlap:
+   * a slow read is not raced by the next poll.
+   */
   async checkConfig(): Promise<void> {
+    if (this.checking || this.stopped) {
+      return;
+    }
+    this.checking = true;
+    try {
+      await this.applyConfig();
+    } finally {
+      this.checking = false;
+    }
+  }
+
+  private async applyConfig(): Promise<void> {
     let config: OvercastConfig | null;
     try {
       config = await loadConfig(this.deps.storage);
@@ -69,8 +90,13 @@ export class ServiceRunner {
       this.deps.log?.(`overcast: reading config failed: ${String(err)}`);
       return;
     }
+    if (this.stopped) {
+      // stop() ran while the read was pending: start nothing.
+      return;
+    }
     const revision = config?.revision ?? 0;
     if (revision === this.revision) {
+      await this.heartbeat();
       return;
     }
     this.revision = revision;
@@ -110,6 +136,15 @@ export class ServiceRunner {
       lastNotification: {title: event.title, at: Date.now(), status: result.status},
     });
     return result;
+  }
+
+  private async heartbeat(): Promise<void> {
+    this.status = {...this.status, at: Date.now()};
+    try {
+      await saveStatus(this.deps.storage, this.status);
+    } catch {
+      // Logged by report() on the next state change.
+    }
   }
 
   private async report(status: ServiceStatus): Promise<void> {

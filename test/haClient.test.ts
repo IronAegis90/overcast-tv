@@ -154,6 +154,17 @@ test('stops retrying when the integration is missing', () => {
   assert.equal(timers.timeouts.size, 0);
 });
 
+test('stops retrying when the TV is registered to another user', () => {
+  const {client, sockets, timers, statuses} = setup();
+  client.start();
+  sockets[0].receive({type: 'auth_required'});
+  sockets[0].receive({type: 'auth_ok'});
+  sockets[0].receive({id: 1, type: 'result', success: false, error: {code: 'unauthorized', message: 'registered to another user'}});
+  assert.equal(sockets[0].closed, true);
+  assert.equal(statuses.at(-1)?.state, 'auth_failed');
+  assert.equal(timers.timeouts.size, 0);
+});
+
 test('retries when the integration is not set up yet', () => {
   const {client, sockets, timers} = setup();
   client.start();

@@ -16,9 +16,11 @@ import {
   loadConfig,
   loadStatus,
   saveConfig,
+  STATUS_STALE_MS,
   type OvercastConfig,
   type ServiceStatus,
 } from './config.ts';
+import {websocketUrl} from './haClient.ts';
 import {SERVICE_ID} from './ids.ts';
 import {DEFAULT_ICON_URL} from './toastContent.ts';
 
@@ -29,6 +31,26 @@ function startService(): void {
   Linking.openURL(`pkg://${SERVICE_ID}`).catch(err =>
     console.log(`overcast: starting the service failed: ${String(err)}`),
   );
+}
+
+function isValidUrl(input: string): boolean {
+  try {
+    websocketUrl(input);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function statusText(config: OvercastConfig | null, status: ServiceStatus | null): string {
+  if (!isComplete(config)) {
+    return STATE_TEXT.unconfigured;
+  }
+  if (!status || Date.now() - status.at > STATUS_STALE_MS) {
+    return 'Service not running. Reopen Overcast to start it.';
+  }
+  const text = STATE_TEXT[status.state] ?? status.state;
+  return status.detail ? `${text} (${status.detail})` : text;
 }
 
 const STATE_TEXT: Record<string, string> = {
@@ -90,7 +112,8 @@ export const App = () => {
     });
   }, [toast]);
 
-  const canSave = !!url.trim() && !!token.trim() && !!name.trim() && !saving;
+  const urlValid = isValidUrl(url);
+  const canSave = urlValid && !!token.trim() && !!name.trim() && !saving;
 
   return (
     <View style={styles.screen}>
@@ -102,6 +125,9 @@ export const App = () => {
 
       <Field label="Home Assistant URL" value={url} onChangeText={setUrl}
         placeholder="https://example.ui.nabu.casa" keyboardType="url" focusFirst />
+      {url.trim() && !urlValid ? (
+        <Text style={styles.error}>The URL must start with http:// or https://</Text>
+      ) : null}
       <Field label="Long-lived access token" value={token} onChangeText={setToken}
         placeholder="Profile → Security → Long-lived access tokens" secure />
       <Field label="TV name" value={name} onChangeText={setName} placeholder="Living Room TV" />
@@ -113,8 +139,7 @@ export const App = () => {
 
       <View style={styles.status}>
         <Text style={styles.statusText}>
-          Status: {isComplete(config) ? STATE_TEXT[status?.state ?? 'starting'] ?? status?.state : STATE_TEXT.unconfigured}
-          {status?.detail ? ` (${status.detail})` : ''}
+          Status: {statusText(config, status)}
         </Text>
         {status?.lastNotification ? (
           <Text style={styles.hint}>
@@ -204,4 +229,5 @@ const styles = StyleSheet.create({
   disabled: {opacity: 0.4},
   status: {borderTopWidth: 1, borderTopColor: '#2c3846', paddingTop: 24},
   statusText: {color: '#ffffff', fontSize: 30, marginBottom: 8},
+  error: {color: '#ff8a80', fontSize: 24, marginTop: -12, marginBottom: 20},
 });

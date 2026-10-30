@@ -49,6 +49,8 @@ TV                                        Home Assistant
 
 The result is `{"protocol": 1}` on success, and the subscription stays open: notifications arrive as `event` messages with the register command's `id`. If the TV registers again with the same `device_id`, the new connection replaces the old one.
 
+A `device_id` is bound to the Home Assistant user whose token first registered it. Device ids are visible to any signed-in user, so without this binding any user could take over a TV's notifications. Registering the same `device_id` with another user's token fails with `unauthorized` until the TV's device is deleted in Home Assistant.
+
 Errors (`"success": false`):
 
 | `error.code` | Meaning | TV should |
@@ -56,6 +58,7 @@ Errors (`"success": false`):
 | `unsupported_protocol` | HA speaks another protocol version | stop and tell the user to update |
 | `unknown_command` | the integration is not installed | stop and tell the user |
 | `not_loaded` | the integration is installed but not set up | retry with backoff |
+| `unauthorized` | the `device_id` is registered to another Home Assistant user | stop and tell the user to delete the TV's device in Home Assistant, or use that user's token |
 
 ### Notification event (HA → TV)
 
@@ -105,6 +108,6 @@ TVs ignore event kinds they don't know, so new kinds can be added without a vers
 
 ## Delivery
 
-- Notifications for a TV that is not connected are queued: up to 10 per TV, each kept for its `ttl` (default 60 s, up to 3600 s), and delivered in order when the TV registers. With `ttl: 0` the action fails instead.
+- Notifications for a TV that is not connected are queued: up to 10 per TV, each kept for exactly its `ttl` (default 60 s, up to 3600 s), and delivered in order when the TV registers. With `ttl: 0` the action fails instead.
 - The TV pings every 30 s. If a ping gets no pong by the next one, it drops the connection and reconnects.
 - Reconnects back off 1 s, 2 s, 4 s … up to 60 s, resetting after a successful registration. The TV stops retrying on `auth_invalid` until the user changes its settings.
