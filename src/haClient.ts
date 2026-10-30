@@ -19,6 +19,7 @@ export type ClientState =
   | 'connected'
   | 'disconnected'
   | 'auth_failed'
+  | 'device_conflict'
   | 'unsupported'
   | 'stopped';
 
@@ -64,6 +65,8 @@ export interface ClientOptions {
 }
 
 export const PING_INTERVAL_MS = 30_000;
+/** Auth plus registration must finish within this, or the socket is dropped. */
+export const HANDSHAKE_TIMEOUT_MS = 30_000;
 export const MAX_BACKOFF_MS = 60_000;
 
 const REGISTER_ID = 1;
@@ -100,6 +103,7 @@ export class OvercastClient {
   private attempt = 0;
   private reconnectTimer: unknown = null;
   private pingTimer: unknown = null;
+  private handshakeTimer: unknown = null;
   private awaitingPong = false;
   private stopped = true;
   status: ClientStatus = {state: 'stopped'};
@@ -149,6 +153,15 @@ export class OvercastClient {
       return;
     }
     this.socket = socket;
+    // A server that accepts the socket but never answers would otherwise leave
+    // the client "connecting" forever; ping only starts after registration.
+    this.handshakeTimer = this.timers.setTimeout(() => {
+      this.handshakeTimer = null;
+      if (this.socket === socket) {
+        this.closeSocket();
+        this.scheduleReconnect('Home Assistant did not answer');
+      }
+    }, HANDSHAKE_TIMEOUT_MS);
     socket.onmessage = ev => {
       if (this.socket === socket) {
         this.handleMessage(ev.data);
@@ -162,7 +175,7 @@ export class OvercastClient {
         return;
       }
       this.socket = null;
-      this.clearPing();
+      this.clearSocketTimers();
       if (!this.stopped) {
         this.scheduleReconnect(ev.reason || `closed (${ev.code ?? 'no code'})`);
       }
@@ -219,10 +232,11 @@ export class OvercastClient {
     }
     const code: string | undefined = msg.error?.code;
     if (code === 'unauthorized') {
-      // This TV is registered to another HA user; retrying cannot succeed.
+      // The token works, but this TV is registered to another HA user;
+      // retrying cannot succeed.
       this.stopped = true;
       this.closeSocket();
-      this.setStatus({state: 'auth_failed', detail: msg.error.message});
+      this.setStatus({state: 'device_conflict'});
       return;
     }
     if (code === 'unsupported_protocol' || code === 'unknown_command') {
@@ -282,7 +296,7 @@ export class OvercastClient {
   }
 
   private startPing(): void {
-    this.clearPing();
+    this.clearSocketTimers();
     this.awaitingPong = false;
     this.pingTimer = this.timers.setInterval(() => {
       if (this.awaitingPong) {
@@ -297,7 +311,7 @@ export class OvercastClient {
   }
 
   private scheduleReconnect(detail: string): void {
-    this.clearPing();
+    this.clearSocketTimers();
     if (this.stopped || this.reconnectTimer !== null) {
       return;
     }
@@ -309,7 +323,7 @@ export class OvercastClient {
   private closeSocket(): void {
     const socket = this.socket;
     this.socket = null;
-    this.clearPing();
+    this.clearSocketTimers();
     if (socket) {
       try {
         socket.close();
@@ -319,7 +333,12 @@ export class OvercastClient {
     }
   }
 
-  private clearPing(): void {
+  /** Clears the timers tied to the current socket: handshake and ping. */
+  private clearSocketTimers(): void {
+    if (this.handshakeTimer !== null) {
+      this.timers.clearTimeout(this.handshakeTimer);
+      this.handshakeTimer = null;
+    }
     if (this.pingTimer !== null) {
       this.timers.clearInterval(this.pingTimer);
       this.pingTimer = null;
@@ -327,7 +346,7 @@ export class OvercastClient {
   }
 
   private clearTimers(): void {
-    this.clearPing();
+    this.clearSocketTimers();
     if (this.reconnectTimer !== null) {
       this.timers.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

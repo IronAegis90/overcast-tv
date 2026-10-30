@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
 import {
+  HANDSHAKE_TIMEOUT_MS,
   OvercastClient,
   backoffMs,
   websocketUrl,
@@ -161,7 +162,7 @@ test('stops retrying when the TV is registered to another user', () => {
   sockets[0].receive({type: 'auth_ok'});
   sockets[0].receive({id: 1, type: 'result', success: false, error: {code: 'unauthorized', message: 'registered to another user'}});
   assert.equal(sockets[0].closed, true);
-  assert.equal(statuses.at(-1)?.state, 'auth_failed');
+  assert.equal(statuses.at(-1)?.state, 'device_conflict');
   assert.equal(timers.timeouts.size, 0);
 });
 
@@ -201,6 +202,24 @@ test('pings, and reconnects when a ping goes unanswered', () => {
   assert.equal(sockets[0].closed, true);
   timers.flushTimeouts();
   assert.equal(sockets.length, 2);
+});
+
+test('drops a socket that never completes the handshake', () => {
+  const {client, sockets, timers, statuses} = setup();
+  client.start();
+  sockets[0].receive({type: 'auth_required'}); // then silence
+  assert.deepEqual(timers.flushTimeouts(), [HANDSHAKE_TIMEOUT_MS]);
+  assert.equal(sockets[0].closed, true);
+  assert.equal(statuses.at(-1)?.state, 'disconnected');
+  assert.deepEqual(timers.flushTimeouts(), [1000]);
+  assert.equal(sockets.length, 2);
+});
+
+test('a completed handshake cancels the handshake timeout', () => {
+  const {client, sockets, timers} = setup();
+  client.start();
+  connect(sockets[0]);
+  assert.equal(timers.timeouts.size, 0);
 });
 
 test('stop closes the socket and cancels retries', () => {

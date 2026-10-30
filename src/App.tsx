@@ -60,6 +60,8 @@ const STATE_TEXT: Record<string, string> = {
   connected: 'Connected',
   disconnected: 'Disconnected, retrying',
   auth_failed: 'Home Assistant rejected the token',
+  device_conflict:
+    "This TV is registered to another Home Assistant user. Delete the TV's device in Home Assistant, or use that user's token",
   unsupported: 'Home Assistant is not ready for Overcast',
   stopped: 'Stopped',
 };
@@ -127,6 +129,12 @@ export const App = () => {
         placeholder="https://example.ui.nabu.casa" keyboardType="url" focusFirst />
       {url.trim() && !urlValid ? (
         <Text style={styles.error}>The URL must start with http:// or https://</Text>
+      ) : null}
+      {urlValid && /^http:/i.test(url.trim()) ? (
+        <Text style={styles.warning}>
+          http:// sends your token unencrypted. Use https:// if you can, and never http:// over the
+          internet.
+        </Text>
       ) : null}
       <Field label="Long-lived access token" value={token} onChangeText={setToken}
         placeholder="Profile → Security → Long-lived access tokens" secure />
@@ -230,4 +238,5 @@ const styles = StyleSheet.create({
   status: {borderTopWidth: 1, borderTopColor: '#2c3846', paddingTop: 24},
   statusText: {color: '#ffffff', fontSize: 30, marginBottom: 8},
   error: {color: '#ff8a80', fontSize: 24, marginTop: -12, marginBottom: 20},
+  warning: {color: '#ffd180', fontSize: 24, marginTop: -12, marginBottom: 20, maxWidth: 1400},
 });
