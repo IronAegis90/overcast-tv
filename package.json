@@ -23,7 +23,7 @@
     "@amazon-devices/keplerscript-commonmodules": "^1.1.1",
     "@react-native-community/cli": "^20.0.0",
     "@react-native/babel-preset": "0.83.10",
-    "@react-native/metro-config": "0.83.0",
+    "@react-native/metro-config": "0.83.10",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.0",
     "typescript": "^5.8.3"
