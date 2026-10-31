@@ -1,0 +1,62 @@
+# Vega app manifest. Validate with: vega exec vpt validate manifest.toml
+schema-version = 1
+
+[package]
+title = "Overcast"
+version = "0.1.0"
+id = "io.github.ironaegis90.overcast"
+
+[os.version]
+min = "1.2"
+target = "1.2"
+
+[components]
+# Setup UI.
+[[components.interactive]]
+id = "io.github.ironaegis90.overcast.main"
+runtime-module = "/com.amazon.kepler.runtime.react_native_kepler_4@IReactNativeKepler_0"
+launch-type = "singleton"
+categories = ["com.amazon.category.main"]
+
+# Headless service that holds the Home Assistant connection and posts toasts.
+# The 0.24 headless docs use this runtime module for RN 0.83 services; the RN
+# 0.83 migration guide names .../react_native_kepler_headless_4@IReactNativeKeplerHeadless_0
+# instead. Switch if the service does not start.
+[[components.service]]
+id = "io.github.ironaegis90.overcast.service"
+runtime-module = "/com.amazon.kepler.runtime.react_native_kepler_4@IReactNativeKepler_0"
+launch-type = "singleton"
+
+[processes]
+# The service gets its own process group so it outlives the UI.
+[[processes.group]]
+id = "main"
+component-ids = ["io.github.ironaegis90.overcast.main"]
+
+[[processes.group]]
+id = "service"
+component-ids = ["io.github.ironaegis90.overcast.service"]
+
+[wants]
+# The UI starts its own service (Linking.openURL("pkg://...service")).
+[[wants.service]]
+id = "io.github.ironaegis90.overcast.service"
+
+[needs]
+# Posting toasts. The useToastKepler docs declare this under needs;
+# vega-service-toast declares it under wants.
+[[needs.privilege]]
+id = "com.amazon.notification.privilege.post"
+
+[[needs.module]]
+id = "/com.amazon.vega.os@IVega_1_2"
+
+[[needs.module]]
+id = "/com.amazon.kepler.headless_task_manager_1@IHeadlessTaskManager_2"
+
+[offers]
+[[offers.service]]
+id = "io.github.ironaegis90.overcast.service"
+
+[[offers.interaction]]
+id = "io.github.ironaegis90.overcast.main"

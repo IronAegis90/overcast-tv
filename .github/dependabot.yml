@@ -1,0 +1,39 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Vega SDK packages are released together; update them in one PR.
+      vega-sdk:
+        patterns:
+          - "@amazon-devices/*"
+      dev-tooling:
+        dependency-type: development
+        exclude-patterns:
+          - "@amazon-devices/*"
+          - "@react-native/*"
+          - "@react-native-community/cli"
+    ignore:
+      # React Native, React and their tooling must match the RN version the
+      # Vega SDK targets (0.83 / react-native-kepler 4.x). Move them together,
+      # by hand, when the SDK moves.
+      - dependency-name: react-native
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: react
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@react-native/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@react-native-community/cli"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@amazon-devices/react-native-kepler"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
