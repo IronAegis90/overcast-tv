@@ -15,7 +15,7 @@
     "@amazon-devices/headless-task-manager": "^1.2.9",
     "@amazon-devices/react-native-async-storage__async-storage": "^2.1.9000000002",
     "@amazon-devices/react-native-kepler": "^4.0.2",
-    "react": "19.2.0",
+    "react": "19.2.9",
     "react-native": "0.83.0"
   },
   "devDependencies": {
