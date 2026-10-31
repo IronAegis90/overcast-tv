@@ -16,7 +16,7 @@
     "@amazon-devices/react-native-async-storage__async-storage": "^2.1.9000000002",
     "@amazon-devices/react-native-kepler": "^4.0.2",
     "react": "19.2.9",
-    "react-native": "0.83.0"
+    "react-native": "0.83.10"
   },
   "devDependencies": {
     "@amazon-devices/kepler-cli-platform": "^0.22.14",
